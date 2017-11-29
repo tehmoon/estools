@@ -36,20 +36,30 @@ func main() {
   var scrollId string
   var rq *elastic.RangeQuery
   var bq *elastic.BoolQuery
+  var jresp *JsonResponse
 
-  res, err := client.Search(flags.Index).
-    Query(qs).
-    Size(1).
-    Sort("@timestamp", false).
-    Do(context.Background())
-  if err != nil {
-    fmt.Fprintf(os.Stderr, "Error querying elasticserach cluster: %v")
-    os.Exit(2)
+  for {
+    res, err := client.Search(flags.Index).
+      Query(qs).
+      Size(1).
+      Sort("@timestamp", false).
+      Do(context.Background())
+    if err != nil {
+      fmt.Fprintf(os.Stderr, "Error querying elasticserach cluster: %v")
+      os.Exit(2)
+    }
+
+    jresp = &JsonResponse{}
+
+    if len(res.Hits.Hits) != 0 {
+      json.Unmarshal(*res.Hits.Hits[0].Source, jresp)
+      break
+    }
+
+    log.Println("No results found... Sleeping")
+    time.Sleep(5 * time.Second)
+    continue
   }
-
-  jresp := &JsonResponse{}
-
-  json.Unmarshal(*res.Hits.Hits[0].Source, jresp)
 
   for {
     rq = elastic.NewRangeQuery("@timestamp").Gt(jresp.Timestamp)
