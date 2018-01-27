@@ -9,6 +9,7 @@ import (
   "log"
   "gopkg.in/olivere/elastic.v5"
   "time"
+  "github.com/tehmoon/errors"
 )
 
 type Flags struct {
@@ -28,7 +29,7 @@ func main() {
 
   client, err := elastic.NewClient(elastic.SetURL(flags.Server), elastic.SetSniff(false))
   if err != nil {
-    log.Fatalf("Err creating connection to server %s. Error: %v", flags.Server, err)
+    log.Fatal(errors.Wrapf(err, "Err creating connection to server %s", flags.Server).Error())
   }
 
   qs := elastic.NewQueryStringQuery(flags.QueryStringQuery)
@@ -102,7 +103,7 @@ func main() {
           break
         }
 
-        log.Fatalf("Err querying elasticsearch. Error: %v", err)
+        log.Fatalf(errors.Wrap(err, "Err querying elasticsearch").Error())
       }
 
       for _, hit := range res.Hits.Hits {
@@ -121,7 +122,7 @@ func main() {
     _, err = client.ClearScroll(scrollId).
       Do(context.Background())
     if err != nil {
-      log.Fatalf("Failed to clear the scrollid %s. Error: %v", scrollId, err)
+      log.Fatalf(errors.Wrapf(err, "Failed to clear the scrollid %s", scrollId).Error())
     }
   }
 }
