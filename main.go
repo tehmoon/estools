@@ -68,7 +68,7 @@ func main() {
 
     res, err := client.Scroll(flags.Index).
       Query(bq).
-      Sort("@timestamp", false).
+      Sort("@timestamp", true).
       Scroll("15s").
       Size(0).
       Do(context.Background())
@@ -95,7 +95,7 @@ func main() {
       res, err := client.Scroll(flags.Index).
         Query(bq).
 	Scroll("15s").
-        Sort("@timestamp", false).
+        Sort("@timestamp", true).
         ScrollId(scrollId).
         Do(context.Background())
       if err != nil {
