@@ -9,11 +9,13 @@ It also sort on the field `@timestamp` only.
 ## Help
 
 ```
-Usage of estail:
+Usage of ./estail:
   -index string
     	Specify the elasticsearch index to query
   -query string
     	Elasticsearch query string query (default "*")
   -server string
     	Specify elasticsearch server to query (default "http://localhost:9200")
+  -template string
+    	Specify Go text/template. You can use the function 'json' or 'json_indent'. (default "{{ . | json }}")
 ```
