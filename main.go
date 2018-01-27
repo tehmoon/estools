@@ -9,23 +9,17 @@ import (
   "log"
   "gopkg.in/olivere/elastic.v5"
   "time"
+  "text/template"
   "github.com/tehmoon/errors"
 )
 
-type Flags struct {
-  QueryStringQuery string
-  StartDate string
-  Server string
-  Index string
-}
-
-type JsonResponse struct {
-  Timestamp string `json:"@timestamp"`
-  Message string `json:"message"`
-}
-
 func main() {
   flags := parseFlags()
+
+  tmpl, err := template.New("root").Funcs(functionTemplates).Parse(flags.Template)
+  if err != nil {
+    log.Fatal(errors.Wrap(err, "Error parsing default template").Error())
+  }
 
   client, err := elastic.NewClient(elastic.SetURL(flags.Server), elastic.SetSniff(false))
   if err != nil {
@@ -34,10 +28,13 @@ func main() {
 
   qs := elastic.NewQueryStringQuery(flags.QueryStringQuery)
 
-  var scrollId string
-  var rq *elastic.RangeQuery
-  var bq *elastic.BoolQuery
-  var jresp *JsonResponse
+  var (
+    scrollId string
+    rq *elastic.RangeQuery
+    bq *elastic.BoolQuery
+    jresp map[string]interface{}
+    lastTimestamp string
+  )
 
   for {
     res, err := client.Search(flags.Index).
@@ -50,10 +47,16 @@ func main() {
       os.Exit(2)
     }
 
-    jresp = &JsonResponse{}
+    jresp = make(map[string]interface{})
 
     if len(res.Hits.Hits) != 0 {
-      json.Unmarshal(*res.Hits.Hits[0].Source, jresp)
+      json.Unmarshal(*res.Hits.Hits[0].Source, &jresp)
+      if timestamp, found := jresp["@timestamp"]; found {
+        if timestamp, ok := timestamp.(string); ok {
+          lastTimestamp = timestamp
+        }
+      }
+
       break
     }
 
@@ -63,7 +66,7 @@ func main() {
   }
 
   for {
-    rq = elastic.NewRangeQuery("@timestamp").Gt(jresp.Timestamp)
+    rq = elastic.NewRangeQuery("@timestamp").Gt(lastTimestamp)
     bq = elastic.NewBoolQuery().Must(qs, rq)
 
     res, err := client.Scroll(flags.Index).
@@ -82,14 +85,25 @@ func main() {
     }
 
     scrollId = res.ScrollId
-      for _, hit := range res.Hits.Hits {
-        jresp := &JsonResponse{}
-        json.Unmarshal(*hit.Source, jresp)
-        fmt.Println(jresp.Message)
-      }
-  jresp = &JsonResponse{}
+    for _, hit := range res.Hits.Hits {
+      jresp := make(map[string]interface{})
 
-  json.Unmarshal(*res.Hits.Hits[len(res.Hits.Hits) - 1].Source, jresp)
+      err := json.Unmarshal(*hit.Source, &jresp)
+      if err != nil {
+        continue
+      }
+
+      if timestamp, found := jresp["@timestamp"]; found {
+        if timestamp, ok := timestamp.(string); ok {
+          lastTimestamp = timestamp
+        }
+      }
+
+      err = tmpl.Execute(os.Stdout, jresp)
+      if err != nil {
+        log.Fatalf(errors.Wrap(err, "Error executing template").Error())
+      }
+    }
 
     for {
       res, err := client.Scroll(flags.Index).
@@ -107,14 +121,20 @@ func main() {
       }
 
       for _, hit := range res.Hits.Hits {
-        jresp := &JsonResponse{}
-        json.Unmarshal(*hit.Source, jresp)
-        fmt.Println(jresp.Message)
-      }
-  jresp = &JsonResponse{}
+        jresp := make(map[string]interface{})
+        json.Unmarshal(*hit.Source, &jresp)
 
-  json.Unmarshal(*res.Hits.Hits[len(res.Hits.Hits) - 1].Source, jresp)
-  fmt.Println(jresp)
+        if timestamp, found := jresp["@timestamp"]; found {
+          if timestamp, ok := timestamp.(string); ok {
+            lastTimestamp = timestamp
+          }
+        }
+
+        err = tmpl.Execute(os.Stdout, jresp)
+        if err != nil {
+          log.Fatalf(errors.Wrap(err, "Error executing template").Error())
+        }
+      }
 
       scrollId = res.ScrollId
     }
