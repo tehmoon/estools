@@ -9,34 +9,32 @@ import (
   "log"
   "gopkg.in/olivere/elastic.v5"
   "time"
+  "text/template"
+  "github.com/tehmoon/errors"
 )
-
-type Flags struct {
-  QueryStringQuery string
-  StartDate string
-  Server string
-  Index string
-}
-
-type JsonResponse struct {
-  Timestamp string `json:"@timestamp"`
-  Message string `json:"message"`
-}
 
 func main() {
   flags := parseFlags()
 
+  tmpl, err := template.New("root").Funcs(functionTemplates).Parse(flags.Template)
+  if err != nil {
+    log.Fatal(errors.Wrap(err, "Error parsing default template").Error())
+  }
+
   client, err := elastic.NewClient(elastic.SetURL(flags.Server), elastic.SetSniff(false))
   if err != nil {
-    log.Fatalf("Err creating connection to server %s. Error: %v", flags.Server, err)
+    log.Fatal(errors.Wrapf(err, "Err creating connection to server %s", flags.Server).Error())
   }
 
   qs := elastic.NewQueryStringQuery(flags.QueryStringQuery)
 
-  var scrollId string
-  var rq *elastic.RangeQuery
-  var bq *elastic.BoolQuery
-  var jresp *JsonResponse
+  var (
+    scrollId string
+    rq *elastic.RangeQuery
+    bq *elastic.BoolQuery
+    jresp map[string]interface{}
+    lastTimestamp string
+  )
 
   for {
     res, err := client.Search(flags.Index).
@@ -49,10 +47,16 @@ func main() {
       os.Exit(2)
     }
 
-    jresp = &JsonResponse{}
+    jresp = make(map[string]interface{})
 
     if len(res.Hits.Hits) != 0 {
-      json.Unmarshal(*res.Hits.Hits[0].Source, jresp)
+      json.Unmarshal(*res.Hits.Hits[0].Source, &jresp)
+      if timestamp, found := jresp["@timestamp"]; found {
+        if timestamp, ok := timestamp.(string); ok {
+          lastTimestamp = timestamp
+        }
+      }
+
       break
     }
 
@@ -62,12 +66,12 @@ func main() {
   }
 
   for {
-    rq = elastic.NewRangeQuery("@timestamp").Gt(jresp.Timestamp)
+    rq = elastic.NewRangeQuery("@timestamp").Gt(lastTimestamp)
     bq = elastic.NewBoolQuery().Must(qs, rq)
 
     res, err := client.Scroll(flags.Index).
       Query(bq).
-      Sort("@timestamp", false).
+      Sort("@timestamp", true).
       Scroll("15s").
       Size(0).
       Do(context.Background())
@@ -81,20 +85,31 @@ func main() {
     }
 
     scrollId = res.ScrollId
-      for _, hit := range res.Hits.Hits {
-        jresp := &JsonResponse{}
-        json.Unmarshal(*hit.Source, jresp)
-        fmt.Println(jresp.Message)
-      }
-  jresp = &JsonResponse{}
+    for _, hit := range res.Hits.Hits {
+      jresp := make(map[string]interface{})
 
-  json.Unmarshal(*res.Hits.Hits[len(res.Hits.Hits) - 1].Source, jresp)
+      err := json.Unmarshal(*hit.Source, &jresp)
+      if err != nil {
+        continue
+      }
+
+      if timestamp, found := jresp["@timestamp"]; found {
+        if timestamp, ok := timestamp.(string); ok {
+          lastTimestamp = timestamp
+        }
+      }
+
+      err = tmpl.Execute(os.Stdout, jresp)
+      if err != nil {
+        log.Fatalf(errors.Wrap(err, "Error executing template").Error())
+      }
+    }
 
     for {
       res, err := client.Scroll(flags.Index).
         Query(bq).
 	Scroll("15s").
-        Sort("@timestamp", false).
+        Sort("@timestamp", true).
         ScrollId(scrollId).
         Do(context.Background())
       if err != nil {
@@ -102,18 +117,24 @@ func main() {
           break
         }
 
-        log.Fatalf("Err querying elasticsearch. Error: %v", err)
+        log.Fatalf(errors.Wrap(err, "Err querying elasticsearch").Error())
       }
 
       for _, hit := range res.Hits.Hits {
-        jresp := &JsonResponse{}
-        json.Unmarshal(*hit.Source, jresp)
-        fmt.Println(jresp.Message)
-      }
-  jresp = &JsonResponse{}
+        jresp := make(map[string]interface{})
+        json.Unmarshal(*hit.Source, &jresp)
 
-  json.Unmarshal(*res.Hits.Hits[len(res.Hits.Hits) - 1].Source, jresp)
-  fmt.Println(jresp)
+        if timestamp, found := jresp["@timestamp"]; found {
+          if timestamp, ok := timestamp.(string); ok {
+            lastTimestamp = timestamp
+          }
+        }
+
+        err = tmpl.Execute(os.Stdout, jresp)
+        if err != nil {
+          log.Fatalf(errors.Wrap(err, "Error executing template").Error())
+        }
+      }
 
       scrollId = res.ScrollId
     }
@@ -121,7 +142,7 @@ func main() {
     _, err = client.ClearScroll(scrollId).
       Do(context.Background())
     if err != nil {
-      log.Fatalf("Failed to clear the scrollid %s. Error: %v", scrollId, err)
+      log.Fatalf(errors.Wrapf(err, "Failed to clear the scrollid %s", scrollId).Error())
     }
   }
 }
