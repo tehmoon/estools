@@ -2,7 +2,10 @@
 
 Because we all need a `tail -f` on elasticsearch logs.
 
-For now it only gets the `message` field from the source elasticseach message. I also plan to add some kind of configuration to save queries easier.
+It uses the Go template package from `text/template` which means you can create powerful template to customize the output
+from the JSON response of Elasticsearch.
+
+I'm planing to port a query filter engine that needs dusting for you to be able to save all the queries you saved.
 
 It also sort on the field `@timestamp` only.
 
