@@ -48,45 +48,14 @@ func main() {
 
 	qs := elastic.NewQueryStringQuery(flags.QueryStringQuery)
 
-	var (
-		scrollId string
-		rq *elastic.RangeQuery
-		bq *elastic.BoolQuery
-		jresp map[string]interface{}
-		lastTimestamp string
-	)
-
-	for {
-		res, err := client.Search(flags.Index).
-			Query(qs).
-			Size(1).
-			Sort("@timestamp", false).
-			Do(context.Background())
-		if err != nil {
-			log.Fatalf(errors.Wrap(err, "Err querying elasticserach cluster").Error())
-		}
-
-		jresp = make(map[string]interface{})
-
-		if len(res.Hits.Hits) != 0 {
-			json.Unmarshal(*res.Hits.Hits[0].Source, &jresp)
-			if timestamp, found := jresp["@timestamp"]; found {
-				if timestamp, ok := timestamp.(string); ok {
-					lastTimestamp = timestamp
-				}
-			}
-
-			break
-		}
-
-		log.Println("No results found... Sleeping")
-		time.Sleep(5 * time.Second)
-		continue
+	lastTimestamp, err := getLastTimestamp(client, flags.Index, qs)
+	if err != nil {
+		log.Fatal(err.Error())
 	}
 
 	for {
-		rq = elastic.NewRangeQuery("@timestamp").Gt(lastTimestamp)
-		bq = elastic.NewBoolQuery().Must(qs, rq)
+		rq := elastic.NewRangeQuery("@timestamp").Gt(lastTimestamp)
+		bq := elastic.NewBoolQuery().Must(qs, rq)
 
 		res, err := client.Scroll(flags.Index).
 			Query(bq).
@@ -103,7 +72,7 @@ func main() {
 			log.Fatalf(errors.Wrap(err, "Err querying elasticsearch").Error())
 		}
 
-		scrollId = res.ScrollId
+		scrollId := res.ScrollId
 		for _, hit := range res.Hits.Hits {
 			jresp := make(map[string]interface{})
 
@@ -164,4 +133,36 @@ func main() {
 			log.Fatalf(errors.Wrapf(err, "Failed to clear the scrollid %s", scrollId).Error())
 		}
 	}
+}
+
+func getLastTimestamp(client *elastic.Client, index string, qs *elastic.QueryStringQuery) (string, error) {
+	for {
+		res, err := client.Search(index).
+			Query(qs).
+			Size(1).
+			Sort("@timestamp", false).
+			Do(context.Background())
+		if err != nil {
+			return "", errors.Wrap(err, "Err querying elasticserach cluster")
+		}
+
+		jresp := make(map[string]interface{})
+
+		if len(res.Hits.Hits) != 0 {
+			json.Unmarshal(*res.Hits.Hits[0].Source, &jresp)
+			if timestamp, found := jresp["@timestamp"]; found {
+				if timestamp, ok := timestamp.(string); ok {
+					return timestamp, nil
+				}
+			}
+
+			break
+		}
+
+		log.Println("No results found... Sleeping")
+		time.Sleep(5 * time.Second)
+		continue
+	}
+
+	return "", errors.New("Unknown error")
 }
