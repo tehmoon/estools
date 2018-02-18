@@ -11,6 +11,7 @@ import (
 	"time"
 	"text/template"
 	"github.com/tehmoon/errors"
+	"github.com/tehmoon/esfilters/lib/esfilters"
 )
 
 func main() {
@@ -24,6 +25,25 @@ func main() {
 	client, err := elastic.NewClient(elastic.SetURL(flags.Server), elastic.SetSniff(false))
 	if err != nil {
 		log.Fatal(errors.Wrapf(err, "Err creating connection to server %s", flags.Server).Error())
+	}
+
+	if flags.ConfigFile != "" {
+		config, err := esfilters.ImportConfigFromFile(flags.ConfigFile)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+
+		if flags.FilterName != "" {
+			flags.QueryStringQuery, err = config.Filters.Resolve(fmt.Sprintf(`%%{filter:%s}`, flags.FilterName))
+			if err != nil {
+				log.Fatal(errors.Wrapf(err, "Err resolving -filter-name option").Error())
+			}
+		} else {
+			flags.QueryStringQuery, err = config.Filters.Resolve(flags.QueryStringQuery)
+			if err != nil {
+				log.Fatal(errors.Wrapf(err, "Err resolving -query option").Error())
+			}
+		}
 	}
 
 	qs := elastic.NewQueryStringQuery(flags.QueryStringQuery)
@@ -43,8 +63,7 @@ func main() {
 			Sort("@timestamp", false).
 			Do(context.Background())
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error querying elasticserach cluster: %v")
-			os.Exit(2)
+			log.Fatalf(errors.Wrap(err, "Err querying elasticserach cluster").Error())
 		}
 
 		jresp = make(map[string]interface{})
@@ -81,7 +100,7 @@ func main() {
 				continue
 			}
 
-			log.Fatalf("Err querying elasticsearch. Error: %v", err)
+			log.Fatalf(errors.Wrap(err, "Err querying elasticsearch").Error())
 		}
 
 		scrollId = res.ScrollId
@@ -108,7 +127,7 @@ func main() {
 		for {
 			res, err := client.Scroll(flags.Index).
 				Query(bq).
-	Scroll("15s").
+				Scroll("15s").
 				Sort("@timestamp", true).
 				ScrollId(scrollId).
 				Do(context.Background())
