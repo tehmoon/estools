@@ -1,0 +1,5 @@
+{
+  "filters": {
+    "group_jump_host": "fields.group: \"jump_host\""
+  }
+}

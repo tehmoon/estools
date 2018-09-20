@@ -8,17 +8,22 @@ import (
 
 type Flags struct {
 	QueryStringQuery string
-	StartDate string
 	Server string
 	Index string
 	Template string
 	ConfigFile string
 	FilterName string
+	Tail bool
+	Start string
+	End string
 }
 
 func parseFlags() (*Flags) {
 	flags := &Flags{}
 
+	flag.BoolVar(&flags.Tail, "tail", false, "Keep scrolling on new data. Cannot be used with \"-end\" flag")
+	flag.StringVar(&flags.Start, "start", "", "Specify when to start fetching. Elasticserach date format. Defaults to \"now\" when \"-tail\" is set")
+	flag.StringVar(&flags.End, "end", "", "Specify when to end fetching. Elasticserach date format. Cannot be used with \"-tail\" flag")
 	flag.StringVar(&flags.QueryStringQuery, "query", "*", "Elasticsearch query string query")
 	flag.StringVar(&flags.FilterName, "filter-name", "", "If specified use the esfilter's filter as the query")
 	flag.StringVar(&flags.ConfigFile, "config", "", "Use configuration file created by esfilters")
@@ -48,6 +53,16 @@ func parseFlags() (*Flags) {
 
 	if flags.FilterName != "" && (flags.QueryStringQuery != "*" && flags.QueryStringQuery != "") {
 		fmt.Fprintln(os.Stderr, "-filter-name and -query are mutually exclusive")
+		flag.Usage()
+		os.Exit(2)
+	}
+
+	if flags.Start == "" && flags.Tail {
+		flags.Start = "now"
+	}
+
+	if flags.Tail && flags.End != "" {
+		fmt.Fprintln(os.Stderr, "-end and -tail are mutually exclusive")
 		flag.Usage()
 		os.Exit(2)
 	}
