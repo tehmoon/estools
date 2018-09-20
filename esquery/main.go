@@ -10,7 +10,7 @@ import (
 	"gopkg.in/olivere/elastic.v5"
 	"text/template"
 	"github.com/tehmoon/errors"
-	"github.com/tehmoon/esfilters/lib/esfilters"
+	"github.com/tehmoon/estools/esfilters/lib/esfilters"
 )
 
 func main() {

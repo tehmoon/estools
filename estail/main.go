@@ -11,7 +11,7 @@ import (
 	"time"
 	"text/template"
 	"github.com/tehmoon/errors"
-	"github.com/tehmoon/esfilters/lib/esfilters"
+	"github.com/tehmoon/estools/esfilters/lib/esfilters"
 )
 
 func main() {

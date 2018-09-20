@@ -51,12 +51,12 @@ If you want to count the number of different terms you can call `field_uniq_per_
 ## How to install
 There are two ways you could install `esfilters`:
 
-  - By going to the [release page](https://github.com/tehmoon/esfilters/releases)
+  - By going to the [release page](https://github.com/tehmoon/estools/releases)
   - By compiling it yourself:
     - Download and install [go](https://golang.org)
-    - `git clone https://github.com/tehmoon/esfilters`
+    - `git clone https://github.com/tehmoon/estools
     - Set `GOPATH`: `mkdir ~/work/go && export GOPATH=~/work/go`
-    - `cd esfilters`
+    - `cd estools/esfilters`
     - Get dependencies `go get ./...`
     - Generate binary `go build`
     - Optional: Move the binary to `${GOPATH}/bin`: `go install`
