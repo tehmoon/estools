@@ -62,6 +62,10 @@ func main() {
 		}
 	}
 
+	if res == nil {
+		return
+	}
+
 	scrollId := res.ScrollId
 	for _, hit := range res.Hits.Hits {
 		jresp := make(map[string]interface{})
