@@ -52,7 +52,7 @@ func main() {
 
 	res, err := client.Scroll(flags.Index).
 		Query(bq).
-		Sort("@timestamp", true).
+		Sort("@timestamp", false).
 		Scroll("15s").
 		Size(0).
 		Do(context.Background())
@@ -60,6 +60,10 @@ func main() {
 		if err != io.EOF {
 			log.Fatalf(errors.Wrap(err, "Err querying elasticsearch").Error())
 		}
+	}
+
+	if res == nil {
+		return
 	}
 
 	scrollId := res.ScrollId
@@ -81,7 +85,7 @@ func main() {
 		res, err := client.Scroll(flags.Index).
 			Query(bq).
 			Scroll("15s").
-			Sort("@timestamp", true).
+			Sort("@timestamp", false).
 			ScrollId(scrollId).
 			Do(context.Background())
 		if err != nil {
