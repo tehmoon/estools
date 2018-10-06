@@ -52,7 +52,7 @@ func main() {
 
 	res, err := client.Scroll(flags.Index).
 		Query(bq).
-		Sort("@timestamp", false).
+		Sort(flags.Sort, flags.Asc).
 		Scroll("15s").
 		Size(0).
 		Do(context.Background())
@@ -66,8 +66,14 @@ func main() {
 		return
 	}
 
+	counter := 0
+
 	scrollId := res.ScrollId
 	for _, hit := range res.Hits.Hits {
+		if counter == flags.Size && counter != 0 {
+			break
+		}
+
 		jresp := make(map[string]interface{})
 
 		err := json.Unmarshal(*hit.Source, &jresp)
@@ -79,13 +85,14 @@ func main() {
 		if err != nil {
 			log.Fatalf(errors.Wrap(err, "Error executing template").Error())
 		}
+
+		counter++
 	}
 
-	for {
+	LOOP: for {
 		res, err := client.Scroll(flags.Index).
 			Query(bq).
 			Scroll("15s").
-			Sort("@timestamp", false).
 			ScrollId(scrollId).
 			Do(context.Background())
 		if err != nil {
@@ -97,6 +104,11 @@ func main() {
 		}
 
 		for _, hit := range res.Hits.Hits {
+			if counter == flags.Size && counter != 0 {
+				scrollId = res.ScrollId
+				break LOOP
+			}
+
 			jresp := make(map[string]interface{})
 			json.Unmarshal(*hit.Source, &jresp)
 
@@ -104,6 +116,8 @@ func main() {
 			if err != nil {
 				log.Fatalf(errors.Wrap(err, "Error executing template").Error())
 			}
+
+			counter++
 		}
 
 		scrollId = res.ScrollId

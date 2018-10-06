@@ -15,6 +15,9 @@ type Flags struct {
 	FilterName string
 	From string
 	To string
+	Size int
+	Asc bool
+	Sort string
 }
 
 func parseFlags() (*Flags) {
@@ -22,6 +25,9 @@ func parseFlags() (*Flags) {
 
 	flag.StringVar(&flags.From, "from", "now-15m", "Elasticsearch date for gte")
 	flag.StringVar(&flags.To, "to", "now", "Elasticsearch date for lte")
+	flag.BoolVar(&flags.Asc, "asc", false, "Sort by asc")
+	flag.StringVar(&flags.Sort, "sort", "@timestamp", "Sort field")
+	flag.IntVar(&flags.Size, "size", 0, "Overall number of results to display, does not change the scroll size")
 	flag.StringVar(&flags.QueryStringQuery, "query", "*", "Elasticsearch query string query")
 	flag.StringVar(&flags.FilterName, "filter-name", "", "If specified use the esfilter's filter as the query")
 	flag.StringVar(&flags.ConfigFile, "config", "", "Use configuration file created by esfilters")
@@ -63,6 +69,12 @@ func parseFlags() (*Flags) {
 
 	if flags.FilterName != "" && (flags.QueryStringQuery != "*" && flags.QueryStringQuery != "") {
 		fmt.Fprintln(os.Stderr, "Flags \"-filter-name\" and \"-query\" are mutually exclusive")
+		flag.Usage()
+		os.Exit(2)
+	}
+
+	if flags.Size < 0 {
+		fmt.Fprintln(os.Stderr, "Flags \"-size\" cannot be negative")
 		flag.Usage()
 		os.Exit(2)
 	}
