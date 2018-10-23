@@ -62,6 +62,21 @@ func main() {
 		}
 	}
 
+	if flags.CountOnly {
+		var totalHits int64 = 0
+
+		if res != nil {
+			totalHits = res.Hits.TotalHits
+		}
+
+		err = tmpl.Execute(os.Stdout, totalHits)
+		if err != nil {
+			log.Fatalf(errors.Wrap(err, "Error executing template").Error())
+		}
+
+		return
+	}
+
 	if res == nil {
 		return
 	}
