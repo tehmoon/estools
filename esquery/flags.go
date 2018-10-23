@@ -17,6 +17,7 @@ type Flags struct {
 	To string
 	Size int
 	Asc bool
+	CountOnly bool
 	Sort string
 }
 
@@ -34,6 +35,7 @@ func parseFlags() (*Flags) {
 	flag.StringVar(&flags.Server, "server", "http://localhost:9200", "Specify elasticsearch server to query")
 	flag.StringVar(&flags.Index, "index", "", "Specify the elasticsearch index to query")
 	flag.StringVar(&flags.Template, "template", "{{ . | json }}", "Specify Go text/template. You can use the function 'json' or 'json_indent'.")
+	flag.BoolVar(&flags.CountOnly, "count-only", false, "Only displays the match number")
 
 	flag.Parse()
 
