@@ -14,9 +14,13 @@ File an issue or a PR it's more than welcomed
 ## Help
 
 ```
-Usage of ./esquery: [-config=file] [-query=Query | <-config=file> <-filter-name=FilterName>] <-server=Url> <-index=Index> [-to=date] [-from=date] [-template=Template]
+Usage of ./esquery: [-config=file] [-query=Query | <-config=file> <-filter-name=FilterName>] <-server=Url> <-index=Index> [-to=date] [-from=date] [-template=Template] [-sort=Field] [-asc] [-size=Size] [-count-only]
+  -asc
+      Sort by asc
   -config string
       Use configuration file created by esfilters
+  -count-only
+      Only displays the match number
   -filter-name string
       If specified use the esfilter's filter as the query
   -from string
@@ -27,6 +31,10 @@ Usage of ./esquery: [-config=file] [-query=Query | <-config=file> <-filter-name=
       Elasticsearch query string query (default "*")
   -server string
       Specify elasticsearch server to query (default "http://localhost:9200")
+  -size int
+      Overall number of results to display, does not change the scroll size
+  -sort string
+      Sort field (default "@timestamp")
   -template string
       Specify Go text/template. You can use the function 'json' or 'json_indent'. (default "{{ . | json }}")
   -to string
