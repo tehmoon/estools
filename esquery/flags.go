@@ -88,7 +88,7 @@ func parseFlags() (*Flags) {
 
 func init() {
 	flag.Usage = func () {
-		fmt.Fprintf(os.Stderr, "Usage of %s: [-config=file] [-query=Query | <-config=file> <-filter-name=FilterName>] <-server=Url> <-index=Index> [-to=date] [-from=date] [-template=Template]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage of %s: [-config=file] [-query=Query | <-config=file> <-filter-name=FilterName>] <-server=Url> <-index=Index> [-to=date] [-from=date] [-template=Template] [-sort=Field] [-asc] [-size=Size] [-count-only]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 }
