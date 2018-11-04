@@ -15,6 +15,7 @@ type Flags struct {
 	SleepFor int
 	Exec string
 	Owners []string
+	Listen string
 }
 
 func parseFlags() (*Flags) {
@@ -28,6 +29,7 @@ func parseFlags() (*Flags) {
 	flag.StringVar(&flags.Index, "index", "", "Specify the elasticsearch index to query")
 	flag.StringVar(&flags.Dir, "dir", "", "Directory where the .json files are")
 	flag.StringVar(&flags.Exec, "exec", "", "Execute a command when alerting")
+	flag.StringVar(&flags.Listen, "listen", ":7769", "Start HTTP server and listen in ip:port")
 	flag.IntVar(&flags.SleepFor, "sleep-for", 60, "Sleep for in seconds after all queries have been ran")
 	flag.StringVar(&owners, "owners", "", "List of default owners separated by \",\" to notify")
 
@@ -67,7 +69,7 @@ func parseFlags() (*Flags) {
 
 func init() {
 	flag.Usage = func () {
-		fmt.Fprintf(os.Stderr, "Usage of %s: <-server=Url> <-index=Index> <-dir=Directory>\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 }

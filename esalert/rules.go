@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	functionTemplates = template.FuncMap{
+	functionTemplatesText = template.FuncMap{
 		"newline": func() (string) {
 			return "\n"
 		},
@@ -39,6 +39,7 @@ type RuleTemplateType int
 const (
 	RuleTemplateCheck RuleTemplateType = iota
 	RuleTemplateBody
+	RuleTemplateLog
 )
 
 // Not thread safe
@@ -47,11 +48,17 @@ type Rule struct {
 	Query string `json:"query"`
 	Body string `json:"Body"`
 	Name string `json:"name"`
+	Log string `json:"log"`
+	From RuleDatetime `json:"from"`
+	To RuleDatetime `json:"to"`
+	TimestampField string `json:"timestamp_field"`
 	tCheck *template.Template
 	tBody *template.Template
+	tLog *template.Template
 	file string
 	buff *bytes.Buffer
 	owners []string
+	Index string `json:"-"`
 }
 
 func (r *Rule) Validate() (error) {
@@ -59,9 +66,9 @@ func (r *Rule) Validate() (error) {
 		return errors.Errorf("Field %q is missing", "check")
 	}
 
-//	if r.Name == "" {
-//		return errors.Errorf("Field %q is missing", "name")
-//	}
+	if r.Log == "" {
+		r.Log = `{{ . | json }}{{ newline }}`
+	}
 
 	if r.Body == "" {
 		return errors.Errorf("Field %q is missing", "Body")
@@ -71,15 +78,38 @@ func (r *Rule) Validate() (error) {
 		return errors.Errorf("Field %q is missing", "query")
 	}
 
+	if r.TimestampField == "" {
+		r.TimestampField = "@timestamp"
+	}
+
 	var err error
-	r.tCheck, err = template.New("root").Funcs(functionTemplates).Parse(r.Check)
+	r.tCheck, err = template.New("root").Funcs(functionTemplatesText).Parse(r.Check)
 	if err != nil {
 		return errors.Wrapf(err, "Bad template for field %q", "check")
 	}
 
-	r.tBody, err = template.New("root").Funcs(functionTemplates).Parse(r.Body)
+	r.tBody, err = template.New("root").Funcs(functionTemplatesText).Parse(r.Body)
 	if err != nil {
 		return errors.Wrapf(err, "Bad template for field %q", "body")
+	}
+
+	r.tLog, err = template.New("root").Funcs(functionTemplatesText).Parse(r.Log)
+	if err != nil {
+		return errors.Wrapf(err, "Bad template for field %q", "log")
+	}
+
+	// 60 sec period + 15 sec index time
+	if r.From.Date == "" {
+		r.From.Date = "now"
+		r.From.Minus = "90s"
+		r.From.Round = "minute"
+	}
+
+	// 15 sec index time
+	if r.To.Date == "" {
+		r.To.Date = "now"
+		r.To.Minus = "15s"
+		r.To.Round = "minute"
 	}
 
 	return nil
@@ -100,6 +130,12 @@ func (r Rule) ExecTemplate(t RuleTemplateType, v interface{}) (string, error) {
 			err = r.tBody.Execute(r.buff, v)
 			if err != nil {
 				err = errors.Wrap(err, "Error executing body template")
+			}
+
+		case RuleTemplateLog:
+			err = r.tLog.Execute(r.buff, v)
+			if err != nil {
+				err = errors.Wrap(err, "Error executing log template")
 			}
 	}
 
@@ -146,6 +182,7 @@ func loadRules(flags *Flags) (Rules, error) {
 			return nil, errors.Wrap(err, "Error loading rule")
 		}
 
+		rule.Index = flags.Index
 		rules = append(rules, *rule)
 	}
 
