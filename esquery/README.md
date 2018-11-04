@@ -14,7 +14,8 @@ File an issue or a PR it's more than welcomed
 ## Help
 
 ```
-Usage of ./esquery: [-config=file] [-query=Query | <-config=file> <-filter-name=FilterName>] <-server=Url> <-index=Index> [-to=date] [-from=date] [-template=Template] [-sort=Field] [-asc] [-size=Size] [-count-only]
+Flag "-index" is required
+Usage of ./esquery: [-config=file] [-query=Query | <-config=file> <-filter-name=FilterName>] <-server=Url> <-index=Index> [-to=date] [-from=date] [-template=Template] [-sort=Field] [-asc] [-size=Size] [-count-only] [-scroll-size=Size]
   -asc
       Sort by asc
   -config string
@@ -29,6 +30,8 @@ Usage of ./esquery: [-config=file] [-query=Query | <-config=file> <-filter-name=
       Specify the elasticsearch index to query
   -query string
       Elasticsearch query string query (default "*")
+  -scroll-size int
+      Document to return between each scroll (default 500)
   -server string
       Specify elasticsearch server to query (default "http://localhost:9200")
   -size int

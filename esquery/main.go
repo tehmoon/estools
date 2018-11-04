@@ -54,7 +54,7 @@ func main() {
 		Query(bq).
 		Sort(flags.Sort, flags.Asc).
 		Scroll("15s").
-		Size(0).
+		Size(flags.ScrollSize).
 		Do(context.Background())
 	if err != nil {
 		if err != io.EOF {
