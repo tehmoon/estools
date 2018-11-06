@@ -26,11 +26,17 @@ func main() {
 		log.Fatal(errors.Wrap(err, "Error load rules").Error())
 	}
 
+	alertIndex := make(map[string]*Alert, 0)
+	err = startHTTP(flags.Listen, alertIndex)
+	if err != nil {
+		log.Fatal(errors.Wrap(err, "Failed to start HTTP server").Error())
+	}
+
 	for {
 		for _, rule := range rules {
 			log.Printf("Running query from file %q\n", rule.file)
 
-			totalHits, err := fetchTotalHits(client, &rule, flags)
+			gte, lt, totalHits, err := fetch(client, &rule, flags)
 			if err != nil {
 				log.Println(errors.Wrapf(err, "Querying elasticserach for file %q").Error())
 				continue
@@ -43,7 +49,7 @@ func main() {
 			}
 
 			if output != "true" {
-				alert := newAlert(&rule, totalHits)
+				alert := newAlert(&rule, totalHits, gte, lt)
 
 				alert.Body, err = rule.ExecTemplate(RuleTemplateBody, &alert.Metadata)
 				if err != nil {
@@ -57,6 +63,14 @@ func main() {
 					continue
 				}
 
+				err = alert.SaveLogs(client)
+				if err != nil {
+					log.Println(errors.Wrapf(err, "Error saving logs for file %q", rule.file).Error())
+					continue
+				}
+
+				alertIndex[alert.Id] = alert
+
 				log.Println(errors.Wrapf(err, "Alert for file %q output %q", rule.file, output).Error())
 			}
 
@@ -67,20 +81,23 @@ func main() {
 	}
 }
 
-func fetchTotalHits(client *elastic.Client, rule *Rule, flags *Flags) (int64, error) {
-	qs := elastic.NewQueryStringQuery(rule.Query)
+func fetch(client *elastic.Client, rule *Rule, flags *Flags) (*time.Time, *time.Time, int64, error) {
+	gte, _ := rule.From.Time()
+	lt, _ := rule.To.Time()
 
-	// TODO: make flag
-	rq := elastic.NewRangeQuery("@timestamp").Gte("now-1d/d")
+	qs := elastic.NewQueryStringQuery(rule.Query)
+	rq := elastic.NewRangeQuery(rule.TimestampField).
+					Gte(gte.UTC().Format(time.RFC3339)).
+					Lt(lt.UTC().Format(time.RFC3339))
 	bq := elastic.NewBoolQuery().Must(qs, rq)
 
-	res, err := client.Search(flags.Index).
+	res, err := client.Search(rule.Index).
 		Query(bq).
 		Size(0).
 		Do(context.Background())
 	if err != nil {
 		if err != io.EOF {
-			return 0, errors.Wrapf(err, "Error querying from file %q", rule.file)
+			return nil, nil, 0, errors.Wrapf(err, "Error querying from file %q", rule.file)
 		}
 	}
 
@@ -90,5 +107,5 @@ func fetchTotalHits(client *elastic.Client, rule *Rule, flags *Flags) (int64, er
 		totalHits = res.Hits.TotalHits
 	}
 
-	return totalHits, nil
+	return gte, lt, totalHits, nil
 }

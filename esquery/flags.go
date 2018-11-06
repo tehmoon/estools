@@ -19,6 +19,7 @@ type Flags struct {
 	Asc bool
 	CountOnly bool
 	Sort string
+	ScrollSize int
 }
 
 func parseFlags() (*Flags) {
@@ -29,6 +30,7 @@ func parseFlags() (*Flags) {
 	flag.BoolVar(&flags.Asc, "asc", false, "Sort by asc")
 	flag.StringVar(&flags.Sort, "sort", "@timestamp", "Sort field")
 	flag.IntVar(&flags.Size, "size", 0, "Overall number of results to display, does not change the scroll size")
+	flag.IntVar(&flags.ScrollSize, "scroll-size", 500, "Document to return between each scroll")
 	flag.StringVar(&flags.QueryStringQuery, "query", "*", "Elasticsearch query string query")
 	flag.StringVar(&flags.FilterName, "filter-name", "", "If specified use the esfilter's filter as the query")
 	flag.StringVar(&flags.ConfigFile, "config", "", "Use configuration file created by esfilters")
@@ -81,6 +83,16 @@ func parseFlags() (*Flags) {
 		os.Exit(2)
 	}
 
+	if flags.ScrollSize < 1 {
+		fmt.Fprintln(os.Stderr, "Flags \"-scroll-size\" cannot be less than 1")
+		flag.Usage()
+		os.Exit(2)
+	}
+
+	if flags.ScrollSize > flags.Size && flags.Size != 0 {
+		flags.ScrollSize = flags.Size
+	}
+
 	flags.Template = fmt.Sprintf("%s\n", flags.Template)
 
 	return flags
@@ -88,7 +100,7 @@ func parseFlags() (*Flags) {
 
 func init() {
 	flag.Usage = func () {
-		fmt.Fprintf(os.Stderr, "Usage of %s: [-config=file] [-query=Query | <-config=file> <-filter-name=FilterName>] <-server=Url> <-index=Index> [-to=date] [-from=date] [-template=Template] [-sort=Field] [-asc] [-size=Size] [-count-only]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage of %s: [-config=file] [-query=Query | <-config=file> <-filter-name=FilterName>] <-server=Url> <-index=Index> [-to=date] [-from=date] [-template=Template] [-sort=Field] [-asc] [-size=Size] [-count-only] [-scroll-size=Size]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 }
