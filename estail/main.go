@@ -60,8 +60,8 @@ func main() {
 		res, err := client.Scroll(flags.Index).
 			Query(bq).
 			Sort("@timestamp", true).
-			Scroll("15s").
-			Size(0).
+			Scroll("5s").
+			Size(500).
 			Do(context.Background())
 		if err != nil {
 			if err == io.EOF {

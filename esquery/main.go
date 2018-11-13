@@ -47,7 +47,7 @@ func main() {
 
 	qs := elastic.NewQueryStringQuery(flags.QueryStringQuery)
 
-	rq := elastic.NewRangeQuery("@timestamp").Gte(flags.From).Lte(flags.To)
+	rq := elastic.NewRangeQuery(flags.TimestampField).Gte(flags.From).Lt(flags.To)
 	bq := elastic.NewBoolQuery().Must(qs, rq)
 
 	res, err := client.Scroll(flags.Index).

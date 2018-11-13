@@ -1,266 +1,291 @@
 # Esalert
 
-Wanted a simple alerting tool based on the amazing [Elasticsearch](https://www.elastic.co/products/elasticsearch)?
+Create powerfull rules based on [elasticsearch](https://www.elastic.co/products/elasticsearch), stay alerted and trigger active-response to have complete control of your infrastructure.
 
-Search no more, `esalert` *is the tool* right for *you*.
+Work less, work smarter.
+
+Features:
+
+  - Really fast: written in Go with multi-threading query support
+  - Active-response: automate and deploy responses based on alerts to your infrastructure
+  - Ultra customizable: write your own scripts, templates, customize your rules that fits exactly to your need
 
 ## Design
 
-`esalert` is at an early stage right now, but the design is rather simple in order to make it supa fast.
+`Esalert` has two components:
 
-It's a single process, not highly available right now, that, giving a directory, will look for `json` files call `rules`.
+  - a server: `esalertd`
+  - and a client: `eslert` (optional)
 
-At each iteration, `esalert` will go through all the loaded `rules` and start querying `elasticsearch`.
+### Esalertd
 
-Depending on the `totalHits` for that query and the `rule`'s configuration, it will trigger an alert or not.
+It is the core of the system. For now it's a single process which processes a number of rules (json files) then schedule them to query elasticsearch based on a date range.
 
-At the end or the batch of queries, it'll `-sleep-for` seconds until repeating this.
+The date range is determined by some date arithmetic from the Go [time](https://godoc.org/time) library.
 
-When an alert gets thrown, `esalert` will scroll through the results using the *same* set of timestamp as for the query and save the result in memory.
+Once the query has ran, it gets either the `total_hits` or the number of buckets from an `aggregation`. That number is passed through a template which will be evaluated as boolan: `true` means that the check of the rules holds true, no need to alert. If it is not true an alert will be triggered.
 
-`esalert` also provides an HTTP API so you can easily retrieve logs for your alert. 
+When an alert is triggered, it executes the binary either from the rule or from the command line flags. A `json` object is passed to the `stdin` of the program, the logic is to be implemented by the user. An alert can only be triggered once per rule and per time range. It won't alert more than once per minute if the queried range is one minute, even if the rule is scheduled every second.
 
-### Rule
+As soon as the alert is triggered, a scroll is scheduled on the exact same query and saved in memory so you have logs of what happened. The scroll happens asynchronously so it does not interfere with the rule/alert scheduler.
 
-A `rule` is a simple `json` file.
+Finally, if configured, when alerts are thrown, an `active-response` can be triggered. Active-responses are orders to the `esalert` client side to execute a command with some parameters. The parameters are derived from the result of the query. They also have an expire date which is tells the client to revert the order (let's say you want to ban an ip address for 2 minutes if it behaved badly).
 
-It has to have the following fields:
+### Esalert
+
+The client side will simple query the server for actions to execute.
+
+Every 5 seconds, the client will query the server for all the responses for all the tags the client is handeling. It will merge the responses to be triggered once if they are from multiple different tags.
+
+Note that it is possible an alert is triggered multiple times and the same value before the expiry date. Active-response scripts must handle actions like a stack: add/pop:
+
+  - GOOD: add x times the same iptables rule which might ban the same ip address regardless of the expiry time, remove one bad one like you don't know the global state.
+  - BAD: remove all iptables rules when a stop is called.
+
+## Active-Response
+
+This is the exciting new feature. Every time an alert is thrown, an active-response per tags gets generated. The active-response has an expiry time that enables you to revert the action when the time has expires.
+
+The client/server architecture is actually a fetch mode rather than pull mode. The server stores the active-responses and clients periodically fetches what they need to fetch.
+
+There is no encryption/authentication so *please* encrypt your traffic or wait until I come up with a solution. Use at your own risk or contact me.
+
+### Tags
+
+Tags are hardcoded values in the rule's configuration that will indicate where the generated active-response will be.
+
+Let's say you have 3 different kind of rules:
+
+  - A rule that will trigger an active-response on all your datacenter `us-east-1`
+  - A rule that will trigger an active-response on all your backend servers `backend`
+  - A rule that will trigger an active-response on all your servers `all`
+
+Then you configure your client to "listen" on all the tags: `--tags all --tags backend -- tags us-east-1`.
+
+Next time an active-response gets triggered, the clients that are listening on the right tags will be triggered.
+
+### IDs
+
+Active-responses have `id`s. As multiple tags can be specified in the rule's configuration, they will be duplicated for each tags. Clients listening on multiple tags can trigger the same active-response. To mitigate that, the client will only trigger active-responses that have not been seen before.
+
+### Expiry
+
+You can specify for how long the action-response will be active. When it is active, the client invoke the action with the keyword "start" and some parameter. When the active-response expires, the clients must invoke the same script and the same parameters, but with the keyword "stop" instead.
+
+## Rules
+
+They are at the core of `esalertd`'s configuration. Each rule is a json file with a lot of fields inside. For convenience, you can generate your own using a simple shell script and a template.
+
+Here are the options:
+
+  - `query`: `string`
+    - Elasticsearch query using a go template. It uses the object `TemplateQueryRoot` as root of the template.
+
+  - `body`: `string`
+    - Go template of the body of the alert. It uses the object `AlertPayload` as root of the template.
+  - `check`: `string`
+    - This is the most important field, if it returns anything except "true", an alert is thrown. It uses the number of results found from the elasticsearch query as root of the template.
+  - `log`: `string`
+    - Go template of the alert logs. When the alert is thrown and a job is schedule to scroll through all the results, you can specify a template so you can customize the output. Note that the result is not html safe, the content-type from the http header is `application/text` to avoid any log poisoning attack. The root of the template is the object returned by elasticsearch.
+  - `alert_every`: `duration`
+    - Trigger an alert no less than the specified duration. It is useful if you query often but for a very large range, you might not want to be bothered that much. Note that only the first alert is recorded. If further alerts are triggering, it will increment a counter and get logged, but it will not be triggered.
+  - `max_wait_schedule`: `duration`
+    - Every second the scheduler runs and tries to find queries that are due to be scheduled. However, if all the queries are due to be scheduled at the same time, it will lead to a lot of traffic every x period of time. To mitigate this, you can use this setting, it will randomly wait between 0ns and this duration to first schedule the query.
+  - `run_every`: `duration`
+    - Run the query every x period of time. Note that it won't be really accurate (because of clocks and OS schedulers). Be careful tunning this setting, a date range smaller than this setting might make you skip data (some times you don't care about skipping data).
+  - `owners`: `stringarray`
+    - Set the owners of this rules. The owners are passed to the alert script so you can contact the right people
+  - `aggregation`: `object`
+    - Root object field when you need to aggregate on some fields. If not specified, esalertd will use the `total_hits` as value.
+  - `aggregation.type`: `string`
+    - internal aggregation type to esalertd. It does not reflect the elasticsearch types as more logic is needed.
+  - `aggregation.field`: `string`
+    - set the field on which to perform the aggregation
+  - `from`: `object`
+    - the `from` field is a `DateTime` internal object that sets the *greater or equal than* of the query range. It performs date arithmetics so the time stays consistent throughout the query lifecycle.
+  - `from.date`: `string`
+    - specify the date of the query range. It accepts the standard `json` standard format by default but you can specify a layout if you want to parse to a custom format. By default it is set to `now`.
+  - `from.round`: `string`
+    - round the date down to the nearest unit : `nanosecond`, `second`, `minute`, `day` and `week`. By default it rounds down to the minute
+  - `from.minus`: `duration`
+    - subtract the duration to the time. By default it is `60s` for the `from` and `0s` for the `to`.
+  - `from.plus`: `duration`
+    - add the duration to the time.
+  - `from.layout`: `string`
+    - specify the layout you want to use to parse the `date`. It uses the Go [time](https://godoc.org/time) package formatting.
+  - `to`: `object`
+    - same as the `from` object except sets the *lower than* of the query.
+  - `response`: `object`
+    - this it the `active-response` feature. When not specified, the `active-response` is not triggered
+  - `response.expire`: `duration`
+    - set the expiration date from the date that the alert has been triggered
+  - `response.tags`: `string array`
+    - set the associated tags with the `active-response`
+  - `response.action`: `string`
+    - command to execute on the client side
+  - `response.args`: `string array`
+    - list of arguments to pass to the script. Each argument is passed through the `TemplateResponseRoot` template.
+
+## Aggregations
+
+They are part of a the elasticsearch features. Some times you might not want just the total of all the hits. You might want to aggregate data over that query. An example would be to aggregate by ip address.
+
+Then the `check` template will perform the check on each result from the aggregation. It will trigger alert *per aggregation result* and not overall.
+
+Here is a list of all supported aggregation:
+
+  - "terms": Simple `terms` aggregation over all the terms (nyi but the goal is to use partitioning to get all data in order to not miss a single one (slow))
+
+## Templates
+
+Esalert use extensively the Go [template](https://godoc.org/text/template) package.
+
+In this section you will find multiple root object used in various template string.
+
+### TemplateQueryRoot
+
+  - `From`: string
+
+    - date in `json` format of the from parameter from the running query.
+
+  - `To`: string
+    - data in `json` format of the to parameter from the running query.
+
+### AlertPayload
+
+  - `from`: `date`
+
+    - the *greater or equal than* part of the query
+
+  - `to`: `date`
+    - the *lower than* part of the query
+  - `scheduled_at`: `date`
+    - when the query has been scheduled
+  - `triggered_at`: `date`
+    - when the alert has been triggered
+  - `executed_at`: `date`
+    - when the alert script has been executed
+  - `count`: `int`
+    - the result of the query
+  - `value`: `string`
+    - the value of the result. Will be the same as `count` if the query type is not an aggregation
+  - `id`: `string`
+    - a uniq id for the alert
+  - `owners`: `string array`
+    - a list of owners that need to be notified
+  - `body`: `string`
+    - the generated body of the alert
+  - `rule_name`: `string`
+    - the name of the rule that has gave birth to this alert
+  - `log_url`: `string`
+    - the url of where to get the log. Note that if the query is not an aggregation the `log_url` value will be empty
+  - `metadata`: `array of strings`
+    - specified metadata in the rule's configuration that are reflected to the alert payload
+  - `alert`: `boolean`:
+    - when `alert` is true, it means that the alert plugin should send an alert to notify people about the issue. It is synced with `alert_every`.
+
+### TemplateResponseRoot
+
+  - `Value`: `string|int`
+
+    - Value from the query. It will the same as `count` if the query type is not an aggregation.
+
+  - `Count`: `int`
+    - Number of time the value has been seen. It will be the `total_hits` value if the query type is not an aggregation
+
+## Caveats
+no HA
+memory only: logs, active-responses and so on
+no authentication/encryption
+
+## Date range/Run every/Query delay
+All rules must have a date range. The date range is resolved when the rule is scheduled to be run. There is a lot of flexibility on how to configure the date range. Let's stat with the `date` field. This field can be any date format as long as you specify the layout in the `layout` field according to the go [time](https://godoc.org/time) package.
+
+There is a special keyword `now` that you can use to set the time when the rule is scheduled. Then the time is rounded down to some unit. If you want precision, round it to the second. The larger the round is, the less it will be precise. 
+
+## Rule examples
 
 ```
 {
-  "query": string,
-  "check": string,
-  "body": string,
-  "log": string,
-  "from": {
-    "minus": string,
-    "plus": string,
-    "round": string,
-    "date": string,
-    "layout": string
-  },
-  "to": {
-    "minus": string,
-    "plus": string,
-    "round": string,
-    "date": string,
-    "layout": string
-  },
-  "timestamp_field": string
-}
-```
-
-#### Query: required
-
-This is the `query string query` passed to `elasticsearch`
-
-#### Check: required
-
-`Check` takes the form of a [go template](https://godoc.org/text/template). It has to evaluate to a `bool` `true` otherwise an alert is triggered.
-
-The object that is passed as the root is the `integer: totalHits`.
-
-IE:
-
-```
-  "check": "{{ eq . 0 }}"
-```
-
-Will check if `totalHits` is equal to `0`. If not, an alert gets thrown.
-
-#### Body: required
-
-This is the body of the alert. Once again, it's using the [go template](https://godoc.org/text/template) so you have a lot of flexibility.
-
-The root of the object of type `AlertMetadata`:
-
-```
-type AlertMetadata struct {
-  Query string
-  File string
-  TotalHits int64
-  Name string
-  Owners []string
-  From time.Time
-  To time.Time
-  Index string
-  TimestampField string
-}
-```
-
-IE:
-
-```
-  "body": "Host: localhost had \"{{ .TotalHits }}\" in the past minute"
-```
-
-#### Log: optional defaults to '{{ . | json }}{{ newline }}'
-
-When the alert gets thrown and `esalert` has to scroll through the results, it will apply the template specified in `log` to each result.
-
-The root of the object being the source of the elasticsearch document.
-
-#### Timestamp_field: optional defaults to '@timestamp`
-
-If you don't want to use the field `@timestamp` as time range for your query, you can use this field
-
-#### From: optional defaults to {"minus": "90s", "round": "minute", "date": "now"}
-
-In order for `esalert` to be efficient, it needs to query really fast on the `totalHits` to determine if an alert must be thrown or not.
-
-Then it needs to gets logs. Getting logs is scrolling through the results and saving that results.
-
-In order to get the same number of results as previously got from the query, it needs to scroll over the same date range.
-
-This is where the `dateTime` data structure comes into play.
-
-With this you can:
-
-  - subtract a duration with `minus` to the `date`
-  - set the `date` to any format you would like thanks to the `layout` field. See https://godoc.org/time
-  - add a duration with `plus` to the `date`
-  - set the date to now with the keyword `now` in the field `date`
-  - round the date down to the level of your choice with the field `round`: `minute`, `nanosecond`, `day`, `week` and so on
-
-NB: From will be inclusive as opposed to To.
-
-#### To: optional defaults to {"minus": "15s", "round": "minute", "date": "now"}
-
-Same as `from` except it is `<` exclusive and *not* `<=` inclusive.
-
-### Alerting
-
-When an alert gets thrown, the executable from the `-exec` flags is executed.
-
-It'll write to `stdin` the alert of type `Alert` as `JSON`.
-
-IE:
-
-```
-{
-  "body": string,
-  "metadata": {
-    "query": string,
-    "file": string,
-    "totalHits": int,
-    "name": string,
-    "owners": []string,
-    "from": string,
-    "to": string,
-    "index": string,
-    "timestamp_field": string
-  },
-  "id": string,
-}
-```
-
-Here is an example of a simple `shell` script that uses `curl` and `jq` to send the alert to `slack`:
-
-```
-#!/bin/sh
-
-payload=$(cat -)
-export payload
-
-body="$(printenv payload | jq -jr '"<@" + .metadata.owners[] + "> " , .body + " http://localhost:8080/alert/" + .id')"
-export body
-
-curl -X POST -H 'Content-type: application/json' --data "{\"text\":'${body}'}" https://hooks.slack.com/services/SECRET
-```
-
-In this case, `Owners` will be `slack` handles. So if we pass `-owners blih,blah`, the output on `slack` will be like this:
-
-```
-@blih @blah Suspicious change on host: "localhost" from auditbeat
-```
-
-You are more than welcomed to re-use that script. In following versions I will try to include them directly to `esalert`.
-
-### HTTP API
-
-`esalert` provides an HTTP API which you can query to get moe information
-
-#### GET /alert/{id}
-
-When the alert gets thrown, you get an `id` field.
-
-Querying this endpoint will give you the logs previously generated from the scroll + template in `text/plain` format so you can download and analyse the output.
-
-## Usage
-
-```
-Usage of ./esalert:
-  -dir string
-      Directory where the .json files are
-  -exec string
-      Execute a command when alerting
-  -index string
-      Specify the elasticsearch index to query
-  -listen string
-      Start HTTP server and listen in ip:port (default ":7769")
-  -owners string
-      List of default owners separated by "," to notify
-  -server string
-      Specify elasticsearch server to query (default "http://localhost:9200")
-  -sleep-for int
-      Sleep for in seconds after all queries have been ran (default 60)
-```
-
-## Contributing
-
-Issues, PRs and ideas are more than welcome. File one and I'll review it ASAP.
-
-## Rule examples:
-
-These are some examples of what I use in production. This might be helpful to know where to begin.
-
-### Get soon to expire certificates
-
-```
-{
-  "query": "*",
-  "timestamp_field": "tlsbeat.certificate.no_after",
-  "from": {
-    "round": "minute",
-    "date": "now"
-  },
-  "to": {
-    "round": "week",
-    "date": "now",
-    "plus": "168h"
-  },
-  "check": "{{ eq . 0 }}",
-  "body": "There are some certificate due to expire next week!"
-}
-```
-
-### Make sure the number of backups where OK
-
-```
-{
-  "query": "beat.name: \"filebeat\" && fields.type: \"backup_kafka_done\"",
-  "check": "{{ eq . 2560 }}",
+  "query": "filebeat.www_wp_nginx_access.http_code: 404",
+        "check": "{{ eq . 0 }}",
+  "body": "IP address: \"{{ .Value }}\" has hit the server more than 3 times on not found page: {{ .Count }}",
   "log": "{{ .message }}{{ newline }}",
-  "to": {
-    "round": "hour",
-    "date": "now"
+  "aggregation": { 
+    "type": "terms",
+    "field": "filebeat.www_wp_nginx_access.remote_ip"
   },
+  "alert_every": "10s",
+  "max_wait_schedule": "10s",
+  "owners": [
+    "blah"
+  ],
+  "run_every": "1s",
   "from": {
-    "round": "hour",
     "date": "now",
-    "minus": "62m"
+    "round": "second",
+    "minus": "15s"
   },
-  "body": "Backup kafka had more or less than 2560 hit: \"{{ .TotalHits }}\" in the past hour"
+  "to": {
+    "date": "now",
+    "round": "second"
+  },
+  "response": {
+    "expire": "30s",
+    "tags": [
+      "test",
+      "test1"
+    ],
+    "action": "echo",
+    "args": [
+      "ban",
+      "{{ .Value }}"
+    ]
+  }
 }
 ```
 
-### If error.log contains new entries
+This rule is big, but it outlines all the features of `esalertd`.
 
+In essence it says:
+  - Schedule this query not more than 10 sec after `esalertd` starts
+  - Run this elasticsearch query: `filebeat.www_wp_nginx_access.http_code: 404` every second
+  - From now minus 15 second rounded to the second
+  - To now rounded to the second
+  - Aggregate the results using the `terms` aggregation on the `filebeat.www_wp_nginx_access.remote_ip` field
+  - Check if the number returned by each bucket is higher than `0`
+  - Send an alert with user `blah` as owner if it does not pass the check test
+  - Don't send more than 1 alert every 10 sec
+  - Send the alert with the following template body: `IP address: "{{ .Value }}" has hit the server more than 3 times on not found page: {{ .Count }}`
+  - Trigger a response that expires in 30 sec
+  - With the following tags: `test` and `test1`
+  - That will execute the following template command: `echo ban {{ .Value }}`
+
+## Alert examples
+## Active-response examples
+
+## Contributions
+You are more than welcome to contribute! Right now everything is a little bit messy so just open a PR or an issue and we can talk about it.
+
+## Esalertd
+### Usage
 ```
-{
-  "query": "fields.type: \"cs_error\" && NOT filebeat.cs_error.msg: \"Got GOAWAY\"",
-  "check": "{{ eq . 0 }}",
-  "log": "{{ .message }}{{ newline }}",
-  "body": "Got {{ .TotalHits }} errors in the past minute"
-}
+Usage of esalertd:
+      --dir string             Directory where the .json files are
+      --exec string            Execute a command when alerting
+      --index string           Specify the elasticsearch index to query
+      --listen string          Start HTTP server and listen in ip:port (default ":7769")
+      --owners stringArray     List of default owners to notify
+      --public-url string      Public facing URL (default "http://172.17.0.2:7769")
+      --query-delay duration   When using "now", delay the query to allow index time (default 1s)
+      --server string          Specify elasticsearch server to query (default "http://localhost:9200")
+```
+
+## Esalert
+### Usage
+```
+Usage of esalert:
+      --dir string         Path to actions scripts' directory
+      --tags stringArray   Tags associated with this client
+      --url string         Url of server
 ```
