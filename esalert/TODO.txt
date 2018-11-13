@@ -1,0 +1,3 @@
+- term aggregation loop
+- gob save
+- windows esalert
