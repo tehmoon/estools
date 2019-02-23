@@ -2,6 +2,9 @@ FROM golang:alpine
 
 RUN apk add --no-cache \
 			shadow \
+			gcc \
+			musl-dev \
+			zip \
 			git
 
 RUN useradd -m -s /bin/sh builder

@@ -17,7 +17,7 @@ docker cp ./src "${container_name}:/home/builder/src"
 docker exec "${container_name}" sh compile.sh
 
 rm build/* || true
-docker cp "${container_name}:/home/builder/build/esalertd" build/esalertd
+docker cp "${container_name}:/home/builder/build/esalertd-linux-x86_64.zip" build/
 
 if [ "$(id -u)" = 0 ]
 then
