@@ -7,3 +7,4 @@ More in depth explaination are in subfolders.
   - [estail](/estail)
   - [esfilters](/esfilters)
   - [esquery](/esquery)
+  - [esalert](/esalert)
