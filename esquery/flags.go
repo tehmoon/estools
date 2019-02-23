@@ -20,6 +20,7 @@ type Flags struct {
 	CountOnly bool
 	Sort string
 	ScrollSize int
+	TimestampField string
 }
 
 func parseFlags() (*Flags) {
@@ -29,6 +30,7 @@ func parseFlags() (*Flags) {
 	flag.StringVar(&flags.To, "to", "now", "Elasticsearch date for lte")
 	flag.BoolVar(&flags.Asc, "asc", false, "Sort by asc")
 	flag.StringVar(&flags.Sort, "sort", "@timestamp", "Sort field")
+	flag.StringVar(&flags.TimestampField, "timestamp-field", "@timestamp", "Timestamp field")
 	flag.IntVar(&flags.Size, "size", 0, "Overall number of results to display, does not change the scroll size")
 	flag.IntVar(&flags.ScrollSize, "scroll-size", 500, "Document to return between each scroll")
 	flag.StringVar(&flags.QueryStringQuery, "query", "*", "Elasticsearch query string query")
@@ -49,6 +51,12 @@ func parseFlags() (*Flags) {
 
 	if flags.Template == "" {
 		fmt.Fprintln(os.Stderr, "Flag \"-template\" cannot be empty")
+		flag.Usage()
+		os.Exit(2)
+	}
+
+	if flags.TimestampField == "" {
+		fmt.Fprintln(os.Stderr, "Flags \"-timestamp-field\" cannot be empty")
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -100,7 +108,7 @@ func parseFlags() (*Flags) {
 
 func init() {
 	flag.Usage = func () {
-		fmt.Fprintf(os.Stderr, "Usage of %s: [-config=file] [-query=Query | <-config=file> <-filter-name=FilterName>] <-server=Url> <-index=Index> [-to=date] [-from=date] [-template=Template] [-sort=Field] [-asc] [-size=Size] [-count-only] [-scroll-size=Size]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage of %s: [-config=file] [-query=Query | <-config=file> <-filter-name=FilterName>] <-server=Url> <-index=Index> [-to=date] [-from=date] [-timestamp-field=field] [-template=Template] [-sort=Field] [-asc] [-size=Size] [-count-only] [-scroll-size=Size]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 }
