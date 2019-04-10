@@ -14,8 +14,9 @@ File an issue or a PR it's more than welcomed
 ## Help
 
 ```
-Flag "-index" is required
-Usage of ./esquery: [-config=file] [-query=Query | <-config=file> <-filter-name=FilterName>] <-server=Url> <-index=Index> [-to=date] [-from=date] [-template=Template] [-sort=Field] [-asc] [-size=Size] [-count-only] [-scroll-size=Size]
+Usage of ./esquery: [-config=file] [-query=Query | <-config=file> <-filter-name=FilterName>] <-server=Url> <-index=Index> [-to=date] [-from=date] [-timestamp-field=field] [-template=Template] [-sort=Field] [-asc] [-size=Size] [-count-only] [-scroll-size=Size] [-aggregation=Aggregation]
+  -aggregation string
+      Elastic Aggregation query
   -asc
       Sort by asc
   -config string
@@ -40,6 +41,8 @@ Usage of ./esquery: [-config=file] [-query=Query | <-config=file> <-filter-name=
       Sort field (default "@timestamp")
   -template string
       Specify Go text/template. You can use the function 'json' or 'json_indent'. (default "{{ . | json }}")
+  -timestamp-field string
+      Timestamp field (default "@timestamp")
   -to string
       Elasticsearch date for lte (default "now")
 ```

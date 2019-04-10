@@ -21,6 +21,7 @@ type Flags struct {
 	Sort string
 	ScrollSize int
 	TimestampField string
+	Aggregation string
 }
 
 func parseFlags() (*Flags) {
@@ -40,6 +41,7 @@ func parseFlags() (*Flags) {
 	flag.StringVar(&flags.Index, "index", "", "Specify the elasticsearch index to query")
 	flag.StringVar(&flags.Template, "template", "{{ . | json }}", "Specify Go text/template. You can use the function 'json' or 'json_indent'.")
 	flag.BoolVar(&flags.CountOnly, "count-only", false, "Only displays the match number")
+	flag.StringVar(&flags.Aggregation, "aggregation", "", "Elastic Aggregation query")
 
 	flag.Parse()
 
@@ -108,7 +110,7 @@ func parseFlags() (*Flags) {
 
 func init() {
 	flag.Usage = func () {
-		fmt.Fprintf(os.Stderr, "Usage of %s: [-config=file] [-query=Query | <-config=file> <-filter-name=FilterName>] <-server=Url> <-index=Index> [-to=date] [-from=date] [-timestamp-field=field] [-template=Template] [-sort=Field] [-asc] [-size=Size] [-count-only] [-scroll-size=Size]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "Usage of %s: [-config=file] [-query=Query | <-config=file> <-filter-name=FilterName>] <-server=Url> <-index=Index> [-to=date] [-from=date] [-timestamp-field=field] [-template=Template] [-sort=Field] [-asc] [-size=Size] [-count-only] [-scroll-size=Size] [-aggregation=Aggregation]\n", os.Args[0])
 		flag.PrintDefaults()
 	}
 }
